@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6,6 +6,8 @@
 <title>Door Hanger Tracker</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -731,6 +733,20 @@
   }
   body.sidebar-collapsed #handle-chevron { transform: rotate(180deg); }
 
+  /* Sync status dot */
+  #sync-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  #sync-dot.syncing { background: #f7c948; animation: pulse 1s infinite; }
+  #sync-dot.synced  { background: var(--success); }
+  #sync-dot.error   { background: var(--danger); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
   /* Tap targets - bigger on touch */
   @media (pointer: coarse) {
     .house-item { padding: 11px 16px; }
@@ -752,6 +768,7 @@
       <span class="handle-stat"><span class="handle-stat-val" id="hstat-total">0</span> pins</span>
       <span class="handle-stat"><span class="handle-stat-val green" id="hstat-done">0</span> done</span>
     </div>
+    <div id="sync-dot" title="Sync status"></div>
     <svg id="handle-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
   </div>
 
@@ -853,24 +870,55 @@
 
 <script>
 // ── STATE ────────────────────────────────────────────────
+// ── FIREBASE SETUP ────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyCnFpZq7rTeN5_sfNHUVscUDdYbsSILagc",
+  authDomain: "scoopersquad-6bd21.firebaseapp.com",
+  databaseURL: "https://scoopersquad-6bd21-default-rtdb.firebaseio.com",
+  projectId: "scoopersquad-6bd21",
+  storageBucket: "scoopersquad-6bd21.firebasestorage.app",
+  messagingSenderId: "929753003615",
+  appId: "1:929753003615:web:98ab875e1bd50cf0214dea"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const dbRef = db.ref('dht');
+
+// ── STATE ────────────────────────────────────────────────
 const PALETTE = ['#f75f5f','#f7a25f','#f7e05f','#5ff77e','#5fb8f7','#b05ff7','#f75fca','#5ff7e8'];
 let state = {
-  people: [],       // [{id, name, color}]
-  houses: {},       // {osmId: {addr, lat, lng, personId, done}}
+  people: [],
+  houses: {},
   activePerson: null,
   filter: 'all'
 };
-let markers = {};  // osmId -> leaflet marker
+let markers = {};
 let activePopupId = null;
+let saveTimer = null;
+let isRemoteUpdate = false; // prevents echo loop
 
-// Load saved state
-try {
-  const saved = localStorage.getItem('dht_state');
-  if (saved) state = { ...state, ...JSON.parse(saved) };
-} catch(e) {}
+// Sync status dot helper
+function setSyncDot(status) {
+  const dot = document.getElementById('sync-dot');
+  if (!dot) return;
+  dot.className = '';
+  dot.classList.add(status);
+  dot.title = status === 'synced' ? 'Synced ✓' : status === 'syncing' ? 'Saving…' : 'Sync error';
+}
 
+// Debounced save to Firebase — waits 800ms after last change to avoid flooding writes
 function save() {
-  try { localStorage.setItem('dht_state', JSON.stringify(state)); } catch(e) {}
+  setSyncDot('syncing');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const payload = {
+      people: state.people || [],
+      houses: state.houses || {}
+    };
+    dbRef.set(payload)
+      .then(() => setSyncDot('synced'))
+      .catch(() => setSyncDot('error'));
+  }, 800);
 }
 
 // ── MAP SETUP ────────────────────────────────────────────
@@ -1399,28 +1447,59 @@ function updateHandleStats() {
   if (el2) el2.textContent = houses.filter(h => h.done).length;
 }
 
-// Start collapsed so the map is fully visible on load
-document.body.classList.add('sidebar-collapsed');
+// ── INIT — load from Firebase & listen for changes ───────
+setSyncDot('syncing');
 
-// ── INIT ─────────────────────────────────────────────────
-renderPeople();
-renderHouseList();
-updateStats();
+dbRef.on('value', (snapshot) => {
+  const data = snapshot.val();
 
-// Restore existing markers if any
-Object.keys(state.houses).forEach(renderMarker);
-if (Object.keys(state.houses).length) {
-  document.getElementById('instructions').style.display = 'none';
-  const lats = Object.values(state.houses).map(h => h.lat);
-  const lngs = Object.values(state.houses).map(h => h.lng);
-  if (lats.length) {
-    const bounds = L.latLngBounds(
-      [Math.min(...lats), Math.min(...lngs)],
-      [Math.max(...lats), Math.max(...lngs)]
-    );
-    map.fitBounds(bounds, { padding: [40, 40] });
+  // If another device triggered this update, re-render everything
+  // If it was our own save echo, skip full re-render to avoid flicker
+  const incoming = data || {};
+  const newPeople = incoming.people || [];
+  const newHouses = incoming.houses || {};
+
+  // Update people (merge, preserve local activePerson)
+  state.people = newPeople;
+
+  // Sync houses: add new ones, update changed, remove deleted
+  const incomingIds = new Set(Object.keys(newHouses));
+  const existingIds = new Set(Object.keys(state.houses));
+
+  // Remove markers for deleted houses
+  existingIds.forEach(id => {
+    if (!incomingIds.has(id)) {
+      if (markers[id]) { markers[id].remove(); delete markers[id]; }
+      delete state.houses[id];
+    }
+  });
+
+  // Add/update houses
+  incomingIds.forEach(id => {
+    state.houses[id] = newHouses[id];
+    renderMarker(id);
+  });
+
+  renderPeople();
+  renderHouseList();
+  updateStats();
+  setSyncDot('synced');
+
+  // On very first load, fit map to existing pins if any
+  if (Object.keys(state.houses).length) {
+    document.getElementById('instructions').style.display = 'none';
+    const allH = Object.values(state.houses);
+    const bounds = L.latLngBounds(allH.map(h => [h.lat, h.lng]));
+    try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 }); } catch(e) {}
   }
-}
+}, (err) => {
+  console.error('Firebase error:', err);
+  setSyncDot('error');
+  toast('⚠ Could not connect to database');
+});
+
+// Start collapsed so map is fully visible on load
+document.body.classList.add('sidebar-collapsed');
 </script>
 </body>
 </html>
