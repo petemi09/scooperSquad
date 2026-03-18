@@ -53,11 +53,6 @@
   #sidebar::-webkit-scrollbar-track { background: transparent; }
   #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-  #sidebar-header {
-    padding: 20px 18px 14px;
-    border-bottom: 1px solid var(--border);
-  }
-
   #sidebar-header h1 {
     font-size: 15px;
     font-weight: 700;
@@ -665,14 +660,126 @@
   .leaflet-container { background: #1a1d27 !important; }
   .leaflet-tile { filter: grayscale(100%) brightness(0.82) contrast(1.1); }
 
+  /* ── SIDEBAR COLLAPSE ── */
+  #sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 16px 14px 14px 18px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+    z-index: 10;
+  }
+  #sidebar-header-text { flex: 1; min-width: 0; }
+
+  #sidebar-toggle {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  #sidebar-toggle:hover { background: var(--border); color: var(--text); }
+
+  /* Collapsed state — desktop */
+  body.sidebar-collapsed #sidebar {
+    width: 0;
+    min-width: 0;
+    overflow: hidden;
+    border-right-color: transparent;
+  }
+
+  /* Floating open button (shown when sidebar collapsed) */
+  #sidebar-open-btn {
+    display: none;
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 800;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    transition: background 0.15s;
+  }
+  #sidebar-open-btn:hover { background: var(--border); }
+  body.sidebar-collapsed #sidebar-open-btn { display: flex; }
+
+  /* Sidebar backdrop (mobile only) */
+  #sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 999;
+  }
+
+  /* ── MOBILE ── */
+  @media (max-width: 640px) {
+    body { flex-direction: column; }
+
+    #sidebar {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      width: 85vw !important;
+      min-width: unset !important;
+      max-width: 320px;
+      transform: translateX(0);
+      transition: transform 0.25s ease;
+      z-index: 1000;
+      border-right: 1px solid var(--border);
+    }
+
+    body.sidebar-collapsed #sidebar {
+      width: 85vw !important;
+      min-width: unset !important;
+      transform: translateX(-110%);
+      overflow-y: auto;
+    }
+
+    #map-wrapper { flex: 1; width: 100%; }
+
+    /* Always show open button on mobile */
+    #sidebar-open-btn { display: flex !important; }
+    body:not(.sidebar-collapsed) #sidebar-open-btn { display: none !important; }
+
+    /* Show backdrop when open on mobile */
+    body:not(.sidebar-collapsed) #sidebar-backdrop { display: block; }
+
+    /* Bigger tap targets on mobile */
+    .house-item { padding: 11px 16px; }
+    .popup-person-btn, .popup-freq-btn { padding: 8px 6px; font-size: 12px; }
+    .popup-done-btn, .popup-del-btn { padding: 10px; font-size: 13px; }
+  }
 </style>
 </head>
 <body>
 
 <div id="sidebar">
   <div id="sidebar-header">
-    <h1>🚪 Door Hanger Tracker</h1>
-    <p>Neighborhood route manager</p>
+    <div id="sidebar-header-text">
+      <h1>🚪 Door Hanger Tracker</h1>
+      <p>Neighborhood route manager</p>
+    </div>
+    <button id="sidebar-toggle" title="Collapse sidebar">
+      <svg id="toggle-icon-close" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
   </div>
 
   <div id="search-section">
@@ -752,6 +859,9 @@
 </div>
 
 <div id="map-wrapper">
+  <button id="sidebar-open-btn" title="Open menu">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
   <div id="map"></div>
   <div id="map-loading">
     <div class="spinner"></div>
@@ -765,6 +875,7 @@
 </div>
 
 <div id="toast"></div>
+<div id="sidebar-backdrop"></div>
 
 <script>
 // ── STATE ────────────────────────────────────────────────
@@ -1298,6 +1409,31 @@ document.getElementById('csv-file-input').addEventListener('change', function() 
   };
   reader.readAsText(file);
 });
+
+// ── SIDEBAR COLLAPSE ─────────────────────────────────────
+const body = document.body;
+
+function isMobile() { return window.innerWidth <= 640; }
+
+document.getElementById('sidebar-toggle').addEventListener('click', () => {
+  body.classList.add('sidebar-collapsed');
+  // On desktop, trigger map resize after transition
+  setTimeout(() => map.invalidateSize(), 260);
+});
+
+document.getElementById('sidebar-open-btn').addEventListener('click', () => {
+  body.classList.remove('sidebar-collapsed');
+  setTimeout(() => map.invalidateSize(), 260);
+});
+
+document.getElementById('sidebar-backdrop').addEventListener('click', () => {
+  body.classList.add('sidebar-collapsed');
+});
+
+// On mobile, default to collapsed so map is full screen on load
+if (isMobile()) {
+  body.classList.add('sidebar-collapsed');
+}
 
 // ── INIT ─────────────────────────────────────────────────
 renderPeople();
