@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Door Hanger Tracker</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #191c26;
+    --border: #2a2e3e;
+    --text: #e8eaf2;
+    --muted: #6b7191;
+    --accent: #4f8ef7;
+    --success: #3ecf8e;
+    --danger: #f75f5f;
+    --done-overlay: rgba(62,207,142,0.18);
+    --font-ui: 'DM Sans', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+    --freq-weekly: #ff5f5f;
+    --freq-biweekly: #f7c948;
+    --freq-monthly: #5fb8f7;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-ui);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* SIDEBAR */
+  #sidebar {
+    width: 300px;
+    min-width: 300px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  #sidebar::-webkit-scrollbar { width: 4px; }
+  #sidebar::-webkit-scrollbar-track { background: transparent; }
+  #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  #sidebar-header {
+    padding: 20px 18px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #sidebar-header h1 {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  #sidebar-header p {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+    font-family: var(--font-mono);
+  }
+
+  /* SEARCH */
+  #search-section {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #search-section label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+  }
+
+  #search-row {
+    display: flex;
+    gap: 6px;
+  }
+
+  #town-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--font-ui);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #town-input:focus { border-color: var(--accent); }
+  #town-input::placeholder { color: var(--muted); }
+
+  #search-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  #search-btn:hover { opacity: 0.85; }
+  #search-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #search-status {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 7px;
+    font-family: var(--font-mono);
+    min-height: 14px;
+  }
+  #search-status.error { color: var(--danger); }
+  #search-status.ok { color: var(--success); }
+
+  /* PEOPLE SECTION */
+  #people-section {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 10px;
+    font-family: var(--font-mono);
+  }
+
+  #people-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+
+  .person-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+    user-select: none;
+  }
+  .person-row:hover { background: rgba(255,255,255,0.04); }
+  .person-row.active {
+    background: rgba(79,142,247,0.12);
+    border-color: rgba(79,142,247,0.35);
+  }
+
+  .person-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.2);
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.12s, box-shadow 0.12s;
+  }
+  .person-dot:hover {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.15);
+  }
+
+  .person-color-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+  }
+
+  .person-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .person-count {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+  }
+
+  .person-del {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+    border-radius: 3px;
+    transition: color 0.12s;
+    display: none;
+  }
+  .person-row:hover .person-del { display: block; }
+  .person-del:hover { color: var(--danger); }
+
+  #add-person-row {
+    display: flex;
+    gap: 6px;
+  }
+
+  #new-person-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 9px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: var(--font-ui);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #new-person-input:focus { border-color: var(--accent); }
+  #new-person-input::placeholder { color: var(--muted); }
+
+  #add-person-btn {
+    background: var(--border);
+    color: var(--text);
+    border: none;
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  #add-person-btn:hover { background: #3a3f55; }
+
+  /* LEGEND / STATS */
+  #stats-section {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 8px;
+    text-align: center;
+  }
+  .stat-val {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1;
+  }
+  .stat-val.green { color: var(--success); }
+  .stat-val.blue { color: var(--accent); }
+  .stat-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* HOUSE LIST */
+  #house-list-section {
+    padding: 0;
+  }
+
+  #house-list-header {
+    padding: 12px 18px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+
+  #filter-bar {
+    display: flex;
+    gap: 4px;
+  }
+
+  .filter-btn {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    transition: all 0.12s;
+  }
+  .filter-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .house-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 18px;
+    border-bottom: 1px solid rgba(42,46,62,0.5);
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .house-item:hover { background: rgba(255,255,255,0.03); }
+
+  .house-addr {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .house-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+  }
+
+  .done-check {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 2px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    transition: all 0.12s;
+  }
+  .done-check.checked {
+    background: var(--success);
+    border-color: var(--success);
+    color: #fff;
+  }
+
+  #empty-hint {
+    padding: 30px 18px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  /* MAP AREA */
+  #map-wrapper {
+    flex: 1;
+    position: relative;
+  }
+
+  #map {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* POPUP */
+  .leaflet-popup-content-wrapper {
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5) !important;
+  }
+  .leaflet-popup-tip { background: var(--panel) !important; }
+  .leaflet-popup-content { margin: 0 !important; padding: 0 !important; }
+
+  .popup-inner { padding: 14px 16px; min-width: 200px; }
+  .popup-addr {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    color: var(--text);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .popup-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 7px;
+    font-family: var(--font-mono);
+  }
+
+  .popup-people { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+
+  .popup-person-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 9px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--font-ui);
+    font-weight: 500;
+    transition: all 0.12s;
+  }
+  .popup-person-btn:hover { border-color: var(--accent); }
+  .popup-person-btn.selected { border-color: transparent; color: #fff; }
+  .popup-person-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .popup-person-none {
+    padding: 5px 9px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--font-ui);
+    transition: all 0.12s;
+  }
+  .popup-person-none:hover { border-color: var(--danger); color: var(--danger); }
+
+  .popup-done-btn {
+    width: 100%;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-ui);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.12s;
+  }
+  .popup-done-btn:hover { background: rgba(62,207,142,0.12); border-color: var(--success); }
+  .popup-done-btn.is-done {
+    background: rgba(62,207,142,0.15);
+    border-color: var(--success);
+    color: var(--success);
+  }
+
+  .popup-del-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--font-ui);
+    transition: all 0.12s;
+  }
+  .popup-del-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  #map { cursor: crosshair !important; }
+
+  /* MAP LOADING OVERLAY */
+  #map-loading {
+    position: absolute;
+    inset: 0;
+    background: rgba(15,17,23,0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  #map-loading.show { opacity: 1; pointer-events: all; }
+
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #loading-text {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+  }
+
+  /* TOAST */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    opacity: 0;
+    transition: all 0.25s;
+    pointer-events: none;
+    z-index: 9999;
+    white-space: nowrap;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* INSTRUCTIONS OVERLAY */
+  #instructions {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+    text-align: center;
+    z-index: 500;
+    max-width: 320px;
+    pointer-events: none;
+  }
+  #instructions h2 {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  #instructions p {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  #instructions .icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+  }
+
+  /* LEGEND */
+  #legend-section {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 0;
+  }
+  .legend-stripe {
+    width: 28px;
+    height: 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .legend-label { font-size: 12px; font-weight: 500; }
+  .legend-count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+  }
+
+  /* CSV SECTION */
+  #csv-section {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 6px;
+  }
+  .csv-btn {
+    flex: 1;
+    padding: 8px 0;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-ui);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.12s;
+  }
+  .csv-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .csv-btn.import { border-color: var(--border); }
+  #csv-file-input { display: none; }
+
+  /* POPUP FREQUENCY */
+  .popup-freq-row {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+  .popup-freq-btn {
+    flex: 1;
+    padding: 5px 4px;
+    border-radius: 5px;
+    border: 2px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 10px;
+    font-weight: 600;
+    font-family: var(--font-ui);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.12s;
+    line-height: 1.3;
+  }
+  .popup-freq-btn:hover { opacity: 0.85; }
+  .popup-freq-btn.active { color: #0f1117; }
+
+  .leaflet-container { background: #1a1d27 !important; }
+  .leaflet-tile { filter: grayscale(100%) brightness(0.82) contrast(1.1); }
+
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h1>🚪 Door Hanger Tracker</h1>
+    <p>Neighborhood route manager</p>
+  </div>
+
+  <div id="search-section">
+    <label>Town &amp; State</label>
+    <div id="search-row">
+      <input id="town-input" type="text" placeholder="e.g. Naperville, IL" />
+      <button id="search-btn">Load</button>
+    </div>
+    <div id="search-status"></div>
+  </div>
+
+  <div id="people-section">
+    <span class="section-title">Team Members</span>
+    <div id="people-list"></div>
+    <div id="add-person-row">
+      <input id="new-person-input" type="text" placeholder="Add name..." maxlength="20"/>
+      <button id="add-person-btn">+ Add</button>
+    </div>
+  </div>
+
+  <div id="legend-section">
+    <span class="section-title">Visit Frequency</span>
+    <div class="legend-row">
+      <div class="legend-stripe" style="background:var(--freq-weekly)"></div>
+      <span class="legend-label">Weekly</span>
+      <span class="legend-count" id="freq-count-weekly">0</span>
+    </div>
+    <div class="legend-row">
+      <div class="legend-stripe" style="background:var(--freq-biweekly)"></div>
+      <span class="legend-label">Bi-Weekly</span>
+      <span class="legend-count" id="freq-count-biweekly">0</span>
+    </div>
+    <div class="legend-row">
+      <div class="legend-stripe" style="background:var(--freq-monthly)"></div>
+      <span class="legend-label">Monthly</span>
+      <span class="legend-count" id="freq-count-monthly">0</span>
+    </div>
+  </div>
+
+  <div id="csv-section">
+    <button class="csv-btn" id="export-csv-btn">⬇ Export CSV</button>
+    <button class="csv-btn import" id="import-csv-btn">⬆ Import CSV</button>
+    <input type="file" id="csv-file-input" accept=".csv"/>
+  </div>
+
+  <div id="stats-section">
+    <span class="section-title">Progress</span>
+    <div id="stats-grid">
+      <div class="stat-box">
+        <div class="stat-val" id="stat-total">0</div>
+        <div class="stat-label">Houses</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val blue" id="stat-assigned">0</div>
+        <div class="stat-label">Assigned</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val green" id="stat-done">0</div>
+        <div class="stat-label">Done</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="house-list-section">
+    <div id="house-list-header">
+      <span class="section-title" style="margin:0">Houses</span>
+      <div id="filter-bar">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="todo">Todo</button>
+        <button class="filter-btn" data-filter="done">Done</button>
+      </div>
+    </div>
+    <div id="house-list">
+      <div id="empty-hint">Search for a neighborhood<br>above to load houses on the map.</div>
+    </div>
+  </div>
+</div>
+
+<div id="map-wrapper">
+  <div id="map"></div>
+  <div id="map-loading">
+    <div class="spinner"></div>
+    <div id="loading-text">Fetching houses...</div>
+  </div>
+  <div id="instructions">
+    <div class="icon">🗺️</div>
+    <h2>Search to get started</h2>
+    <p>Type a town and state to navigate there,<br>then <strong>click any house</strong> on the satellite<br>view to drop a pin.<br><br>Assign it to a team member and<br>mark it complete right from the pin.</p>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── STATE ────────────────────────────────────────────────
+const PALETTE = ['#f75f5f','#f7a25f','#f7e05f','#5ff77e','#5fb8f7','#b05ff7','#f75fca','#5ff7e8'];
+let state = {
+  people: [],       // [{id, name, color}]
+  houses: {},       // {osmId: {addr, lat, lng, personId, done}}
+  activePerson: null,
+  filter: 'all'
+};
+let markers = {};  // osmId -> leaflet marker
+let activePopupId = null;
+
+// Load saved state
+try {
+  const saved = localStorage.getItem('dht_state');
+  if (saved) state = { ...state, ...JSON.parse(saved) };
+} catch(e) {}
+
+function save() {
+  try { localStorage.setItem('dht_state', JSON.stringify(state)); } catch(e) {}
+}
+
+// ── MAP SETUP ────────────────────────────────────────────
+const map = L.map('map', { zoomControl: false }).setView([39.5, -98.35], 4);
+
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles &copy; Esri',
+  maxZoom: 19
+}).addTo(map);
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// ── FREQUENCY COLORS ─────────────────────────────────────
+const FREQ_COLORS = { weekly: '#ff5f5f', biweekly: '#f7c948', monthly: '#5fb8f7' };
+const FREQ_LABELS = { weekly: 'Weekly', biweekly: 'Bi-Weekly', monthly: 'Monthly' };
+
+// ── MARKER ICON FACTORY ──────────────────────────────────
+function makeIcon(color, done, houseNum, freq) {
+  const label = houseNum ? String(houseNum).slice(0,6) : '?';
+  const bg = done ? '#3ecf8e' : (color || '#6b7191');
+  const textColor = done ? '#0f1117' : '#fff';
+  const stripeColor = freq ? FREQ_COLORS[freq] : 'none';
+  const stripeEl = freq
+    ? `<rect x="5" y="2" width="36" height="5" rx="2.5" fill="${stripeColor}"/>`
+    : '';
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="46" height="42" viewBox="0 0 46 42">
+      <rect x="1" y="1" width="44" height="32" rx="6" fill="${bg}" stroke="rgba(0,0,0,0.3)" stroke-width="1.5"/>
+      ${stripeEl}
+      <text x="23" y="${freq ? 23 : 21}" font-family="'DM Mono',monospace" font-size="${label.length > 4 ? 9 : 11}" font-weight="600"
+            fill="${textColor}" text-anchor="middle" dominant-baseline="middle">${done ? '✓ '+label : label}</text>
+      <polygon points="19,33 27,33 23,41" fill="${bg}"/>
+    </svg>`;
+  return L.divIcon({
+    html: svg,
+    className: '',
+    iconSize: [46, 42],
+    iconAnchor: [23, 41],
+    popupAnchor: [0, -42]
+  });
+}
+
+// ── RENDER MARKER ────────────────────────────────────────
+function renderMarker(id) {
+  const h = state.houses[id];
+  if (!h) return;
+  const person = h.personId ? state.people.find(p => p.id === h.personId) : null;
+  const color = person ? person.color : null;
+  const icon = makeIcon(color, h.done, h.houseNum, h.freq || null);
+
+  if (markers[id]) {
+    markers[id].setIcon(icon);
+  } else {
+    const m = L.marker([h.lat, h.lng], { icon }).addTo(map);
+    m.on('click', (e) => { L.DomEvent.stopPropagation(e); openPopup(id); });
+    markers[id] = m;
+  }
+}
+
+// ── POPUP ────────────────────────────────────────────────
+// Shared standalone popup — never toggles closed on re-click
+const sharedPopup = L.popup({ maxWidth: 280, className: '', autoClose: true, closeOnClick: false });
+
+function buildPopupContent(id) {
+  const h = state.houses[id];
+  const peopleHtml = state.people.map(p => {
+    const sel = h.personId === p.id;
+    return `<button class="popup-person-btn ${sel?'selected':''}"
+              style="${sel ? 'background:'+p.color+';border-color:'+p.color : ''}"
+              onclick="assignPerson('${id}','${p.id}')">
+              <span class="popup-person-dot" style="background:${p.color}"></span>${p.name}
+            </button>`;
+  }).join('');
+  const noneHtml = state.people.length ? `<button class="popup-person-none" onclick="assignPerson('${id}',null)">✕ Clear</button>` : '';
+  const emptyMsg = !state.people.length ? '<span style="color:var(--muted);font-size:11px">Add team members in the sidebar first</span>' : '';
+
+  const freqHtml = Object.entries(FREQ_COLORS).map(([key, col]) => {
+    const active = h.freq === key;
+    return `<button class="popup-freq-btn ${active?'active':''}"
+              style="${active ? 'background:'+col+';border-color:'+col : 'border-color:'+col+'66'}"
+              onclick="setFreq('${id}','${key}')">
+              ${FREQ_LABELS[key]}
+            </button>`;
+  }).join('');
+
+  const doneClass = h.done ? 'is-done' : '';
+  const doneLabel = h.done ? '✓ Completed' : '◯ Mark as Complete';
+  return `<div class="popup-inner">
+    <div class="popup-addr">📍 ${h.addr}</div>
+    <div class="popup-label">Visit Frequency</div>
+    <div class="popup-freq-row">${freqHtml}</div>
+    <div class="popup-label">Assign to</div>
+    <div class="popup-people">${emptyMsg}${peopleHtml}${noneHtml}</div>
+    <button class="popup-done-btn ${doneClass}" onclick="toggleDone('${id}')">${doneLabel}</button>
+    <button class="popup-del-btn" onclick="deletePin('${id}')">🗑 Remove Pin</button>
+  </div>`;
+}
+
+function refreshPopup() {
+  if (activePopupId && sharedPopup.isOpen()) {
+    sharedPopup.setContent(buildPopupContent(activePopupId)).update();
+  }
+}
+
+function openPopup(id) {
+  if (!markers[id]) return;
+  activePopupId = id;
+  const h = state.houses[id];
+  sharedPopup
+    .setLatLng([h.lat, h.lng])
+    .setContent(buildPopupContent(id))
+    .openOn(map);
+}
+
+window.assignPerson = function(id, personId) {
+  state.houses[id].personId = personId || null;
+  save();
+  renderMarker(id);
+  refreshPopup();
+  renderPeople();
+  renderHouseList();
+  updateStats();
+};
+
+window.toggleDone = function(id) {
+  state.houses[id].done = !state.houses[id].done;
+  save();
+  renderMarker(id);
+  refreshPopup();
+  renderHouseList();
+  updateStats();
+};
+
+window.deletePin = function(id) {
+  sharedPopup.remove();
+  activePopupId = null;
+  if (markers[id]) { markers[id].remove(); delete markers[id]; }
+  delete state.houses[id];
+  save();
+  renderHouseList();
+  updateStats();
+  renderPeople();
+};
+
+window.setFreq = function(id, freq) {
+  state.houses[id].freq = (state.houses[id].freq === freq) ? null : freq;
+  save();
+  renderMarker(id);
+  refreshPopup();
+  updateStats();
+};
+
+// ── SEARCH ───────────────────────────────────────────────
+document.getElementById('search-btn').addEventListener('click', doSearch);
+document.getElementById('town-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+async function doSearch() {
+  const q = document.getElementById('town-input').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('search-btn');
+  btn.disabled = true;
+  setStatus('Searching...', '');
+  showLoading('Looking up location...');
+
+  try {
+    const geoUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=1`;
+    const geoRes = await fetch(geoUrl, { headers: { 'Accept-Language': 'en' } });
+    const geoData = await geoRes.json();
+
+    if (!geoData.length) {
+      setStatus('Location not found. Try "City, State" e.g. Ames, IA', 'error');
+      hideLoading(); btn.disabled = false; return;
+    }
+
+    const place = geoData[0];
+    const clat = parseFloat(place.lat), clng = parseFloat(place.lon);
+    document.getElementById('instructions').style.display = 'none';
+
+    // Zoom into the town at a good street level
+    if (place.boundingbox) {
+      const bb = place.boundingbox;
+      map.fitBounds([[bb[0], bb[2]], [bb[1], bb[3]]], { padding: [20, 20], maxZoom: 17 });
+    } else {
+      map.setView([clat, clng], 15);
+    }
+
+    const townName = place.display_name.split(',').slice(0, 2).join(',');
+    setStatus(`✓ Navigated to ${townName} — click houses to drop pins`, 'ok');
+
+  } catch(err) {
+    setStatus('Error: ' + err.message, 'error');
+  }
+
+  hideLoading();
+  btn.disabled = false;
+}
+
+// ── MAP CLICK — DROP PIN ──────────────────────────────────
+map.on('click', async function(e) {
+  // Don't drop pins if clicking on existing marker (handled by marker click)
+  const { lat, lng } = e.latlng;
+  showLoading('Looking up address...');
+
+  let addr = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
+      headers: { 'Accept-Language': 'en' }
+    });
+    const data = await res.json();
+    if (data && data.address) {
+      const a = data.address;
+      const num = a.house_number || '';
+      const street = a.road || a.pedestrian || a.footway || '';
+      addr = num && street ? `${num} ${street}` : (street || addr);
+    }
+  } catch(e) {}
+
+  hideLoading();
+
+  const id = `pin_${Date.now()}`;
+  state.houses[id] = {
+    addr,
+    houseNum: addr.split(' ')[0] || '?',
+    lat, lng,
+    personId: null,
+    done: false
+  };
+  save();
+  renderMarker(id);
+  renderHouseList();
+  updateStats();
+  openPopup(id);
+});
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('search-status');
+  el.textContent = msg;
+  el.className = cls;
+}
+
+function showLoading(msg) {
+  document.getElementById('map-loading').classList.add('show');
+  setLoadingText(msg);
+}
+function hideLoading() { document.getElementById('map-loading').classList.remove('show'); }
+function setLoadingText(t) { document.getElementById('loading-text').textContent = t; }
+
+// ── PEOPLE ───────────────────────────────────────────────
+function renderPeople() {
+  const list = document.getElementById('people-list');
+  list.innerHTML = '';
+  state.people.forEach(p => {
+    const count = Object.values(state.houses).filter(h => h.personId === p.id).length;
+    const isActive = state.activePerson === p.id;
+    const row = document.createElement('div');
+    row.className = `person-row${isActive ? ' active' : ''}`;
+    row.innerHTML = `
+      <span class="person-dot" style="background:${p.color}" title="Click to change color">
+        <input class="person-color-input" type="color" value="${p.color}" data-pid="${p.id}" />
+      </span>
+      <span class="person-name">${p.name}</span>
+      <span class="person-count">${count}</span>
+      <button class="person-del" title="Remove" onclick="removePerson('${p.id}',event)">✕</button>`;
+    row.addEventListener('click', (e) => {
+      if (e.target.classList.contains('person-color-input') || e.target.closest('.person-del')) return;
+      state.activePerson = isActive ? null : p.id;
+      renderPeople();
+    });
+    // Color change handler
+    const colorInput = row.querySelector('.person-color-input');
+    colorInput.addEventListener('input', (e) => {
+      e.stopPropagation();
+      const newColor = e.target.value;
+      const person = state.people.find(p2 => p2.id === p.id);
+      if (person) {
+        person.color = newColor;
+        row.querySelector('.person-dot').style.background = newColor;
+        save();
+        // Re-render all markers assigned to this person
+        Object.keys(state.houses).forEach(id => {
+          if (state.houses[id].personId === p.id) renderMarker(id);
+        });
+        updateStats();
+      }
+    });
+    colorInput.addEventListener('click', e => e.stopPropagation());
+    list.appendChild(row);
+  });
+}
+
+document.getElementById('add-person-btn').addEventListener('click', addPerson);
+document.getElementById('new-person-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addPerson();
+});
+
+function addPerson() {
+  const input = document.getElementById('new-person-input');
+  const name = input.value.trim();
+  if (!name) return;
+  if (state.people.find(p => p.name.toLowerCase() === name.toLowerCase())) {
+    toast('Name already exists');
+    return;
+  }
+  const usedColors = state.people.map(p => p.color);
+  const color = PALETTE.find(c => !usedColors.includes(c)) || PALETTE[state.people.length % PALETTE.length];
+  const id = 'p_' + Date.now();
+  state.people.push({ id, name, color });
+  save();
+  input.value = '';
+  renderPeople();
+}
+
+window.removePerson = function(id, evt) {
+  evt.stopPropagation();
+  // Unassign all their houses
+  Object.keys(state.houses).forEach(hid => {
+    if (state.houses[hid].personId === id) state.houses[hid].personId = null;
+  });
+  state.people = state.people.filter(p => p.id !== id);
+  if (state.activePerson === id) state.activePerson = null;
+  save();
+  renderPeople();
+  Object.keys(markers).forEach(renderMarker);
+  renderHouseList();
+  updateStats();
+};
+
+// ── HOUSE LIST ───────────────────────────────────────────
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.filter = btn.dataset.filter;
+    renderHouseList();
+  });
+});
+
+function renderHouseList() {
+  const container = document.getElementById('house-list');
+  const keys = Object.keys(state.houses);
+  if (!keys.length) {
+    container.innerHTML = '<div id="empty-hint">Search for a neighborhood<br>above to load houses on the map.</div>';
+    return;
+  }
+
+  let filtered = keys.map(id => ({ id, ...state.houses[id] }));
+  if (state.filter === 'done') filtered = filtered.filter(h => h.done);
+  if (state.filter === 'todo') filtered = filtered.filter(h => !h.done);
+
+  // Sort: address number numerically
+  filtered.sort((a, b) => {
+    const na = parseInt(a.houseNum) || 0, nb = parseInt(b.houseNum) || 0;
+    return na - nb || a.addr.localeCompare(b.addr);
+  });
+
+  container.innerHTML = filtered.map(h => {
+    const person = h.personId ? state.people.find(p => p.id === h.personId) : null;
+    const badgeStyle = person ? `background:${person.color}22;color:${person.color};border:1px solid ${person.color}44` : 'display:none';
+    const doneStyle = h.done ? 'background:#3ecf8e;border-color:#3ecf8e;color:#0f1117' : '';
+    return `<div class="house-item" onclick="flyToHouse('${h.id}')">
+      <div class="done-check ${h.done?'checked':''}">${h.done?'✓':''}</div>
+      <div class="house-addr">${h.addr}</div>
+      ${person ? `<span class="house-badge" style="${badgeStyle}">${person.name}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+window.flyToHouse = function(id) {
+  const h = state.houses[id];
+  if (!h) return;
+  map.flyTo([h.lat, h.lng], 18, { duration: 0.8 });
+  setTimeout(() => openPopup(id), 600);
+};
+
+// ── STATS ────────────────────────────────────────────────
+function updateStats() {
+  const houses = Object.values(state.houses);
+  document.getElementById('stat-total').textContent = houses.length;
+  document.getElementById('stat-assigned').textContent = houses.filter(h => h.personId).length;
+  document.getElementById('stat-done').textContent = houses.filter(h => h.done).length;
+  document.getElementById('freq-count-weekly').textContent = houses.filter(h => h.freq === 'weekly').length;
+  document.getElementById('freq-count-biweekly').textContent = houses.filter(h => h.freq === 'biweekly').length;
+  document.getElementById('freq-count-monthly').textContent = houses.filter(h => h.freq === 'monthly').length;
+}
+
+// ── TOAST ────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── CSV EXPORT ───────────────────────────────────────────
+document.getElementById('export-csv-btn').addEventListener('click', () => {
+  const houses = Object.entries(state.houses);
+  if (!houses.length) { toast('No pins to export'); return; }
+
+  const header = ['id','address','house_number','latitude','longitude','assigned_to','completed','frequency'];
+  const rows = houses.map(([id, h]) => {
+    const person = h.personId ? state.people.find(p => p.id === h.personId) : null;
+    return [
+      id,
+      `"${(h.addr || '').replace(/"/g,'""')}"`,
+      `"${(h.houseNum || '').replace(/"/g,'""')}"`,
+      h.lat,
+      h.lng,
+      `"${person ? person.name : ''}"`,
+      h.done ? 'yes' : 'no',
+      h.freq || ''
+    ].join(',');
+  });
+
+  const csv = [header.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `door-hangers-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`✓ Exported ${houses.length} pins`);
+});
+
+// ── CSV IMPORT ───────────────────────────────────────────
+document.getElementById('import-csv-btn').addEventListener('click', () => {
+  document.getElementById('csv-file-input').click();
+});
+
+document.getElementById('csv-file-input').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const lines = e.target.result.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) { toast('CSV appears empty'); return; }
+
+    // Parse header to find column indices (flexible — order doesn't matter)
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const col = h => headers.indexOf(h);
+    const idIdx = col('id'), addrIdx = col('address'), numIdx = col('house_number');
+    const latIdx = col('latitude'), lngIdx = col('longitude');
+    const personIdx = col('assigned_to'), doneIdx = col('completed'), freqIdx = col('frequency');
+
+    if (latIdx === -1 || lngIdx === -1) { toast('CSV missing latitude/longitude columns'); return; }
+
+    let imported = 0, skipped = 0;
+
+    lines.slice(1).forEach(line => {
+      // Handle quoted fields with commas
+      const cols = [];
+      let cur = '', inQ = false;
+      for (let c of line) {
+        if (c === '"') { inQ = !inQ; }
+        else if (c === ',' && !inQ) { cols.push(cur); cur = ''; }
+        else cur += c;
+      }
+      cols.push(cur);
+
+      const lat = parseFloat(cols[latIdx]);
+      const lng = parseFloat(cols[lngIdx]);
+      if (isNaN(lat) || isNaN(lng)) { skipped++; return; }
+
+      const id = (idIdx >= 0 && cols[idIdx]) ? cols[idIdx] : `pin_${Date.now()}_${imported}`;
+      const addr = addrIdx >= 0 ? (cols[addrIdx] || `${lat.toFixed(4)},${lng.toFixed(4)}`) : `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      const houseNum = numIdx >= 0 ? cols[numIdx] : addr.split(' ')[0];
+      const done = doneIdx >= 0 ? cols[doneIdx].toLowerCase() === 'yes' : false;
+      const freqRaw = freqIdx >= 0 ? cols[freqIdx].toLowerCase().trim() : '';
+      const freq = ['weekly','biweekly','monthly'].includes(freqRaw) ? freqRaw : null;
+
+      // Match person by name
+      let personId = null;
+      if (personIdx >= 0 && cols[personIdx]) {
+        const pName = cols[personIdx].trim();
+        let person = state.people.find(p => p.name.toLowerCase() === pName.toLowerCase());
+        if (!person && pName) {
+          // Auto-create the person if they don't exist
+          const usedColors = state.people.map(p => p.color);
+          const color = PALETTE.find(c => !usedColors.includes(c)) || PALETTE[state.people.length % PALETTE.length];
+          person = { id: 'p_' + Date.now() + '_' + state.people.length, name: pName, color };
+          state.people.push(person);
+        }
+        if (person) personId = person.id;
+      }
+
+      if (state.houses[id]) { skipped++; return; } // skip already-loaded IDs
+      state.houses[id] = { addr, houseNum, lat, lng, personId, done, freq };
+      renderMarker(id);
+      imported++;
+    });
+
+    save();
+    renderPeople();
+    renderHouseList();
+    updateStats();
+
+    if (imported > 0) {
+      document.getElementById('instructions').style.display = 'none';
+      const allH = Object.values(state.houses);
+      const bounds = L.latLngBounds(allH.map(h => [h.lat, h.lng]));
+      map.fitBounds(bounds, { padding: [30, 30] });
+    }
+
+    toast(`✓ Imported ${imported} pins${skipped ? `, skipped ${skipped}` : ''}`);
+    this.value = '';
+  };
+  reader.readAsText(file);
+});
+
+// ── INIT ─────────────────────────────────────────────────
+renderPeople();
+renderHouseList();
+updateStats();
+
+// Restore existing markers if any
+Object.keys(state.houses).forEach(renderMarker);
+if (Object.keys(state.houses).length) {
+  document.getElementById('instructions').style.display = 'none';
+  const lats = Object.values(state.houses).map(h => h.lat);
+  const lngs = Object.values(state.houses).map(h => h.lng);
+  if (lats.length) {
+    const bounds = L.latLngBounds(
+      [Math.min(...lats), Math.min(...lngs)],
+      [Math.max(...lats), Math.max(...lngs)]
+    );
+    map.fitBounds(bounds, { padding: [40, 40] });
+  }
+}
+</script>
+</body>
+</html>
