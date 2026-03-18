@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -32,26 +32,51 @@
     background: var(--bg);
     color: var(--text);
     height: 100vh;
-    display: flex;
     overflow: hidden;
+    position: relative;
   }
 
-  /* SIDEBAR */
+  /* MAP fills the full screen */
+  #map-wrapper {
+    position: absolute;
+    inset: 0;
+  }
+  #map { width: 100%; height: 100%; cursor: crosshair !important; }
+
+  /* ── BOTTOM SHEET SIDEBAR ── */
   #sidebar {
-    width: 300px;
-    min-width: 300px;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 68vh;
+    max-height: 68vh;
     background: var(--panel);
-    border-right: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    border-radius: 18px 18px 0 0;
+    z-index: 1000;
     display: flex;
     flex-direction: column;
-    z-index: 1000;
+    overflow: hidden;
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    transform: translateY(0);
+  }
+
+  /* Collapsed: only the handle bar peeks out */
+  body.sidebar-collapsed #sidebar {
+    transform: translateY(calc(100% - 56px));
+  }
+
+  /* Scrollable body inside sidebar */
+  #sidebar-body {
+    flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
   }
-
-  #sidebar::-webkit-scrollbar { width: 4px; }
-  #sidebar::-webkit-scrollbar-track { background: transparent; }
-  #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  #sidebar-body::-webkit-scrollbar { width: 4px; }
+  #sidebar-body::-webkit-scrollbar-track { background: transparent; }
+  #sidebar-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
   #sidebar-header h1 {
     font-size: 15px;
@@ -381,16 +406,7 @@
     line-height: 1.7;
   }
 
-  /* MAP AREA */
-  #map-wrapper {
-    flex: 1;
-    position: relative;
-  }
-
-  #map {
-    width: 100%;
-    height: 100%;
-  }
+  /* MAP AREA - handled by bottom-sheet layout above */
 
   /* POPUP */
   .leaflet-popup-content-wrapper {
@@ -494,8 +510,6 @@
     transition: all 0.12s;
   }
   .popup-del-btn:hover { border-color: var(--danger); color: var(--danger); }
-
-  #map { cursor: crosshair !important; }
 
   /* MAP LOADING OVERLAY */
   #map-loading {
@@ -660,127 +674,89 @@
   .leaflet-container { background: #1a1d27 !important; }
   .leaflet-tile { filter: grayscale(100%) brightness(0.82) contrast(1.1); }
 
-  /* ── SIDEBAR COLLAPSE ── */
-  #sidebar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 16px 14px 14px 18px;
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    background: var(--panel);
-    z-index: 10;
-  }
-  #sidebar-header-text { flex: 1; min-width: 0; }
-
-  #sidebar-toggle {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
+  /* ── BOTTOM SHEET HANDLE BAR ── */
+  #sidebar-handle {
     flex-shrink: 0;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-  }
-  #sidebar-toggle:hover { background: var(--border); color: var(--text); }
-
-  /* Collapsed state — desktop */
-  body.sidebar-collapsed #sidebar {
-    width: 0;
-    min-width: 0;
-    overflow: hidden;
-    border-right-color: transparent;
-  }
-
-  /* Floating open button (shown when sidebar collapsed) */
-  #sidebar-open-btn {
-    display: none;
-    position: absolute;
-    top: 14px;
-    left: 14px;
-    z-index: 800;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    color: var(--text);
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
+    height: 56px;
+    display: flex;
     align-items: center;
-    justify-content: center;
+    padding: 0 16px;
+    gap: 12px;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-    transition: background 0.15s;
+    user-select: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
   }
-  #sidebar-open-btn:hover { background: var(--border); }
-  body.sidebar-collapsed #sidebar-open-btn { display: flex; }
+  #sidebar-handle:hover { background: rgba(255,255,255,0.02); }
 
-  /* Sidebar backdrop (mobile only) */
-  #sidebar-backdrop {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.55);
-    z-index: 999;
+  #handle-pill {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
   }
 
-  /* ── MOBILE ── */
-  @media (max-width: 640px) {
-    body { flex-direction: column; }
+  #handle-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    flex: 1;
+  }
 
-    #sidebar {
-      position: fixed;
-      top: 0; left: 0; bottom: 0;
-      width: 85vw !important;
-      min-width: unset !important;
-      max-width: 320px;
-      transform: translateX(0);
-      transition: transform 0.25s ease;
-      z-index: 1000;
-      border-right: 1px solid var(--border);
-    }
+  #handle-stats {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
 
-    body.sidebar-collapsed #sidebar {
-      width: 85vw !important;
-      min-width: unset !important;
-      transform: translateX(-110%);
-      overflow-y: auto;
-    }
+  .handle-stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+  }
+  .handle-stat-val { color: var(--text); font-weight: 600; }
 
-    #map-wrapper { flex: 1; width: 100%; }
+  #handle-chevron {
+    color: var(--muted);
+    transition: transform 0.3s;
+    flex-shrink: 0;
+  }
+  body.sidebar-collapsed #handle-chevron { transform: rotate(180deg); }
 
-    /* Always show open button on mobile */
-    #sidebar-open-btn { display: flex !important; }
-    body:not(.sidebar-collapsed) #sidebar-open-btn { display: none !important; }
-
-    /* Show backdrop when open on mobile */
-    body:not(.sidebar-collapsed) #sidebar-backdrop { display: block; }
-
-    /* Bigger tap targets on mobile */
+  /* Tap targets - bigger on touch */
+  @media (pointer: coarse) {
     .house-item { padding: 11px 16px; }
-    .popup-person-btn, .popup-freq-btn { padding: 8px 6px; font-size: 12px; }
-    .popup-done-btn, .popup-del-btn { padding: 10px; font-size: 13px; }
+    .popup-person-btn, .popup-freq-btn { padding: 9px 6px; font-size: 12px; }
+    .popup-done-btn, .popup-del-btn { padding: 12px; font-size: 13px; }
+    .person-row { padding: 8px; }
   }
+
 </style>
 </head>
 <body>
 
 <div id="sidebar">
-  <div id="sidebar-header">
-    <div id="sidebar-header-text">
-      <h1>🚪 Door Hanger Tracker</h1>
-      <p>Neighborhood route manager</p>
+  <!-- Handle bar — always visible, tap to toggle -->
+  <div id="sidebar-handle">
+    <div id="handle-pill"></div>
+    <span id="handle-title">🚪 Door Hanger Tracker</span>
+    <div id="handle-stats">
+      <span class="handle-stat"><span class="handle-stat-val" id="hstat-total">0</span> pins</span>
+      <span class="handle-stat"><span class="handle-stat-val green" id="hstat-done">0</span> done</span>
     </div>
-    <button id="sidebar-toggle" title="Collapse sidebar">
-      <svg id="toggle-icon-close" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-    </button>
+    <svg id="handle-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
   </div>
+
+  <!-- Scrollable content -->
+  <div id="sidebar-body">
 
   <div id="search-section">
     <label>Town &amp; State</label>
@@ -856,12 +832,11 @@
       <div id="empty-hint">Search for a neighborhood<br>above to load houses on the map.</div>
     </div>
   </div>
+
+  </div><!-- end #sidebar-body -->
 </div>
 
 <div id="map-wrapper">
-  <button id="sidebar-open-btn" title="Open menu">
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-  </button>
   <div id="map"></div>
   <div id="map-loading">
     <div class="spinner"></div>
@@ -875,7 +850,6 @@
 </div>
 
 <div id="toast"></div>
-<div id="sidebar-backdrop"></div>
 
 <script>
 // ── STATE ────────────────────────────────────────────────
@@ -1282,6 +1256,7 @@ function updateStats() {
   document.getElementById('freq-count-weekly').textContent = houses.filter(h => h.freq === 'weekly').length;
   document.getElementById('freq-count-biweekly').textContent = houses.filter(h => h.freq === 'biweekly').length;
   document.getElementById('freq-count-monthly').textContent = houses.filter(h => h.freq === 'monthly').length;
+  updateHandleStats();
 }
 
 // ── TOAST ────────────────────────────────────────────────
@@ -1410,30 +1385,22 @@ document.getElementById('csv-file-input').addEventListener('change', function() 
   reader.readAsText(file);
 });
 
-// ── SIDEBAR COLLAPSE ─────────────────────────────────────
-const body = document.body;
-
-function isMobile() { return window.innerWidth <= 640; }
-
-document.getElementById('sidebar-toggle').addEventListener('click', () => {
-  body.classList.add('sidebar-collapsed');
-  // On desktop, trigger map resize after transition
-  setTimeout(() => map.invalidateSize(), 260);
+// ── SIDEBAR BOTTOM-SHEET TOGGLE ───────────────────────────
+document.getElementById('sidebar-handle').addEventListener('click', () => {
+  document.body.classList.toggle('sidebar-collapsed');
+  setTimeout(() => map.invalidateSize(), 320);
 });
 
-document.getElementById('sidebar-open-btn').addEventListener('click', () => {
-  body.classList.remove('sidebar-collapsed');
-  setTimeout(() => map.invalidateSize(), 260);
-});
-
-document.getElementById('sidebar-backdrop').addEventListener('click', () => {
-  body.classList.add('sidebar-collapsed');
-});
-
-// On mobile, default to collapsed so map is full screen on load
-if (isMobile()) {
-  body.classList.add('sidebar-collapsed');
+function updateHandleStats() {
+  const houses = Object.values(state.houses);
+  const el = document.getElementById('hstat-total');
+  const el2 = document.getElementById('hstat-done');
+  if (el) el.textContent = houses.length;
+  if (el2) el2.textContent = houses.filter(h => h.done).length;
 }
+
+// Start collapsed so the map is fully visible on load
+document.body.classList.add('sidebar-collapsed');
 
 // ── INIT ─────────────────────────────────────────────────
 renderPeople();
