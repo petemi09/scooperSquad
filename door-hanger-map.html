@@ -426,10 +426,17 @@
     font-family: var(--font-mono);
     font-size: 14px;
     font-weight: 500;
-    margin-bottom: 12px;
+    margin-bottom: 6px;
     color: var(--text);
-    padding-bottom: 10px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--border);
+  }
+
+  .popup-date {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    margin-bottom: 10px;
   }
 
   .popup-label {
@@ -1006,8 +1013,10 @@ function buildPopupContent(id) {
 
   const doneClass = h.done ? 'is-done' : '';
   const doneLabel = h.done ? '✓ Completed' : '◯ Mark as Complete';
+  const dateHtml = h.createdAt ? `<div class="popup-date">📅 Added ${h.createdAt}</div>` : '';
   return `<div class="popup-inner">
     <div class="popup-addr">📍 ${h.addr}</div>
+    ${dateHtml}
     <div class="popup-label">Visit Frequency</div>
     <div class="popup-freq-row">${freqHtml}</div>
     <div class="popup-label">Assign to</div>
@@ -1120,7 +1129,9 @@ async function doSearch() {
 
 // ── MAP CLICK — DROP PIN ──────────────────────────────────
 map.on('click', async function(e) {
-  // Don't drop pins if clicking on existing marker (handled by marker click)
+  // Block click-through when popup is open
+  if (sharedPopup.isOpen()) return;
+
   const { lat, lng } = e.latlng;
   showLoading('Looking up address...');
 
@@ -1140,13 +1151,19 @@ map.on('click', async function(e) {
 
   hideLoading();
 
+  // Format creation date as readable string
+  const now = new Date();
+  const createdAt = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    + ' ' + now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
   const id = `pin_${Date.now()}`;
   state.houses[id] = {
     addr,
     houseNum: addr.split(' ')[0] || '?',
     lat, lng,
     personId: null,
-    done: false
+    done: false,
+    createdAt
   };
   save();
   renderMarker(id);
@@ -1322,7 +1339,7 @@ document.getElementById('export-csv-btn').addEventListener('click', () => {
   const houses = Object.entries(state.houses);
   if (!houses.length) { toast('No pins to export'); return; }
 
-  const header = ['id','address','house_number','latitude','longitude','assigned_to','completed','frequency'];
+  const header = ['id','address','house_number','latitude','longitude','assigned_to','completed','frequency','created_at'];
   const rows = houses.map(([id, h]) => {
     const person = h.personId ? state.people.find(p => p.id === h.personId) : null;
     return [
@@ -1333,7 +1350,8 @@ document.getElementById('export-csv-btn').addEventListener('click', () => {
       h.lng,
       `"${person ? person.name : ''}"`,
       h.done ? 'yes' : 'no',
-      h.freq || ''
+      h.freq || '',
+      `"${h.createdAt || ''}"`
     ].join(',');
   });
 
@@ -1449,24 +1467,20 @@ function updateHandleStats() {
 
 // ── INIT — load from Firebase & listen for changes ───────
 setSyncDot('syncing');
+let initialLoadDone = false;
 
 dbRef.on('value', (snapshot) => {
   const data = snapshot.val();
-
-  // If another device triggered this update, re-render everything
-  // If it was our own save echo, skip full re-render to avoid flicker
   const incoming = data || {};
   const newPeople = incoming.people || [];
   const newHouses = incoming.houses || {};
 
-  // Update people (merge, preserve local activePerson)
   state.people = newPeople;
 
   // Sync houses: add new ones, update changed, remove deleted
   const incomingIds = new Set(Object.keys(newHouses));
   const existingIds = new Set(Object.keys(state.houses));
 
-  // Remove markers for deleted houses
   existingIds.forEach(id => {
     if (!incomingIds.has(id)) {
       if (markers[id]) { markers[id].remove(); delete markers[id]; }
@@ -1474,7 +1488,6 @@ dbRef.on('value', (snapshot) => {
     }
   });
 
-  // Add/update houses
   incomingIds.forEach(id => {
     state.houses[id] = newHouses[id];
     renderMarker(id);
@@ -1485,12 +1498,15 @@ dbRef.on('value', (snapshot) => {
   updateStats();
   setSyncDot('synced');
 
-  // On very first load, fit map to existing pins if any
-  if (Object.keys(state.houses).length) {
-    document.getElementById('instructions').style.display = 'none';
-    const allH = Object.values(state.houses);
-    const bounds = L.latLngBounds(allH.map(h => [h.lat, h.lng]));
-    try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 }); } catch(e) {}
+  // ONLY fit bounds on the very first load — never on subsequent syncs
+  if (!initialLoadDone) {
+    initialLoadDone = true;
+    if (Object.keys(state.houses).length) {
+      document.getElementById('instructions').style.display = 'none';
+      const allH = Object.values(state.houses);
+      const bounds = L.latLngBounds(allH.map(h => [h.lat, h.lng]));
+      try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 }); } catch(e) {}
+    }
   }
 }, (err) => {
   console.error('Firebase error:', err);
